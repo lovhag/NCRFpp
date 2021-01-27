@@ -206,7 +206,8 @@ def merge_kd_instance(instance_ids, kd_logits):
         raise Exception(f"instance_ids length ({len(instance_ids)}) and kd_logits length ({len(kd_logits)}) should be equal.")
     for sentence_ix in range(len(instance_ids)):
         # number of words and number of logits for sentence should be equal
-        assert len(instance_ids[sentence_ix][0]) == len(kd_logits[sentence_ix])
+        if not len(instance_ids[sentence_ix][0]) == len(kd_logits[sentence_ix]):
+            raise Exception(f"Number of elements in instance_ids ({len(instance_ids[sentence_ix][0])}) and kd_logits ({len(kd_logits[sentence_ix])}) for sentence nbr {sentence_ix} should be equal.")
         instance_ids[sentence_ix].append(kd_logits[sentence_ix])
         
     return instance_ids
