@@ -94,7 +94,9 @@ def read_instance(input_file, word_alphabet, char_alphabet, feature_alphabets, l
 
     else:
     ### for sequence labeling data format i.e. CoNLL 2003
+        line_index = 0
         for line in in_lines:
+            line_index += 1
             if len(line) > 2:
                 pairs = line.strip().split()
                 word = pairs[0]
@@ -137,6 +139,8 @@ def read_instance(input_file, word_alphabet, char_alphabet, feature_alphabets, l
                 if (len(words) > 0) and ((max_sent_length < 0) or (len(words) < max_sent_length)) :
                     instence_texts.append([words, features, chars, labels])
                     instence_Ids.append([word_Ids, feature_Ids, char_Ids,label_Ids])
+                else:
+                    print(f"read_instance: Skipped at line index {line_index}")
                 words = []
                 features = []
                 chars = []
@@ -179,11 +183,15 @@ def read_kd_instance(input_file, kd_label_file, label_alphabet, max_sent_length,
     
     teacher_predictions = []
     example_teacher_predictions = []
+    line_index = 0
     for line in in_lines:
+        line_index += 1
         if line == "" or line =="\n":
             # append teacher predictions for sentence if not too long sentence length
             if len(example_teacher_predictions) > 0 and ((max_sent_length < 0) or (len(example_teacher_predictions) < max_sent_length)):
                 teacher_predictions.append(example_teacher_predictions)
+            else:
+                print(f"read_kd_instance: Skipped at line index {line_index}")
             example_teacher_predictions = []
         else:
             teacher_word_prediction = [float(x) for x in line.split(" ")]
