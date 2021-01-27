@@ -94,7 +94,7 @@ class SeqLabel(nn.Module):
             tag_seq = tag_seq.view(batch_size, seq_len)
         if self.average_batch:
             total_loss = total_loss / batch_size
-        return total_loss, tag_seq
+        return total_loss, self.kd_param*kd_loss, tag_seq
 
     def forward(self, word_inputs, feature_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, mask):
         outs = self.word_hidden(word_inputs,feature_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover)

@@ -228,7 +228,7 @@ def batchify_with_label_kd(input_batch_list, gpu, if_train=True, sentence_classi
     max_seq_len = word_seq_lengths.max().item()
     word_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).long()
     label_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).long()
-    teacher_preds_seq_tensor = torch.zeros((batch_size, max_seq_len, num_labels), requires_grad=if_train)
+    teacher_preds_seq_tensor = torch.zeros((batch_size, max_seq_len, num_labels), requires_grad=False)
     feature_seq_tensors = []
     for idx in range(feature_num):
         feature_seq_tensors.append(torch.zeros((batch_size, max_seq_len),requires_grad =  if_train).long())
@@ -476,6 +476,7 @@ def train(data):
         sample_id = 0
         sample_loss = 0
         total_loss = 0
+        total_kd_loss = 0
         right_token = 0
         whole_token = 0
         random.shuffle(data.train_Ids)
@@ -497,7 +498,8 @@ def train(data):
                 continue
             if data.kd_param > 0:
                 batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, batch_teacher_preds, mask  = batchify_with_label_kd(instance, data.HP_gpu, True, data.sentence_classification)
-                loss, tag_seq = model.calculate_loss_kd(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, batch_teacher_preds, mask)
+                loss, kd_loss, tag_seq = model.calculate_loss_kd(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, batch_teacher_preds, mask)
+                total_kd_loss += kd_loss.item()
             else:
                 batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, True, data.sentence_classification)
                 loss, tag_seq = model.calculate_loss(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, mask)
@@ -528,7 +530,7 @@ def train(data):
 
         epoch_finish = time.time()
         epoch_cost = epoch_finish - epoch_start
-        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s"%(idx, epoch_cost, train_num/epoch_cost, total_loss))
+        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s, total kd loss: %s"%(idx, epoch_cost, train_num/epoch_cost, total_loss, total_kd_loss))
         print("totalloss:", total_loss)
         if total_loss > 1e8 or str(total_loss) == "nan":
             print("ERROR: LOSS EXPLOSION (>1e8) ! PLEASE SET PROPER PARAMETERS AND STRUCTURE! EXIT....")
