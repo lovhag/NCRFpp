@@ -107,6 +107,10 @@ class Data:
         self.HP_clip = None
         self.HP_momentum = 0
         self.HP_l2 = 1e-8
+        
+        self.train_kd_dir = None
+        self.kd_label_file = None
+        self.kd_param = None
 
     def show_data_summary(self):
         
@@ -298,6 +302,9 @@ class Data:
         self.fix_alphabet()
         if name == "train":
             self.train_texts, self.train_Ids = read_instance(self.train_dir, self.word_alphabet, self.char_alphabet, self.feature_alphabets, self.label_alphabet, self.number_normalized, self.MAX_SENTENCE_LENGTH, self.sentence_classification, self.split_token)
+            if self.kd_param and self.kd_param > 0:
+                train_kd_logits = read_kd_instance(self.train_kd_dir, self.kd_label_file, self.label_alphabet, self.MAX_SENTENCE_LENGTH, self.sentence_classification)
+                self.train_Ids = merge_kd_instance(self.train_Ids, train_kd_logits)
         elif name == "dev":
             self.dev_texts, self.dev_Ids = read_instance(self.dev_dir, self.word_alphabet, self.char_alphabet, self.feature_alphabets, self.label_alphabet, self.number_normalized, self.MAX_SENTENCE_LENGTH, self.sentence_classification, self.split_token)
         elif name == "test":
@@ -538,6 +545,17 @@ class Data:
         if self.sentence_classification:
             self.seg = False
             self.use_crf = False
+            
+        ## read kd config
+        the_item = 'train_kd_dir'
+        if the_item in config:
+            self.train_kd_dir = config[the_item]
+        the_item = 'kd_label_file'
+        if the_item in config:
+            self.kd_label_file = config[the_item]
+        the_item = 'kd_param'
+        if the_item in config:
+            self.kd_param = float(config[the_item])
 
 
 def config_file_to_dict(input_file):

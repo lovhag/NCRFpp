@@ -192,6 +192,94 @@ def batchify_with_label(input_batch_list, gpu, if_train=True, sentence_classific
     else:
         return batchify_sequence_labeling_with_label(input_batch_list, gpu, if_train)
 
+def batchify_with_label_kd(input_batch_list, gpu, if_train=True, sentence_classification=False):
+    """
+        input: list of words, chars, labels and teacher_preds, various length. [[words, features, chars, labels, teacher_preds],[words, features, chars,labels, teacher_preds],...]
+            words: word ids for one sentence. (batch_size, sent_len)
+            features: features ids for one sentence. (batch_size, sent_len, feature_num)
+            chars: char ids for on sentences, various length. (batch_size, sent_len, each_word_length)
+            labels: label ids for one sentence. (batch_size, sent_len)
+            teacher_preds: teacher predictions per word for one sentence. (batch_size, sent_len, num_NER_labels)
+
+        output:
+            zero padding for word and char, with their batch length
+            word_seq_tensor: (batch_size, max_sent_len) Variable
+            feature_seq_tensors: [(batch_size, max_sent_len),...] list of Variable
+            word_seq_lengths: (batch_size,1) Tensor
+            char_seq_tensor: (batch_size*max_sent_len, max_word_len) Variable
+            char_seq_lengths: (batch_size*max_sent_len,1) Tensor
+            char_seq_recover: (batch_size*max_sent_len,1)  recover char sequence order
+            label_seq_tensor: (batch_size, max_sent_len)
+            
+            mask: (batch_size, max_sent_len)
+    """
+    assert not sentence_classification
+    
+    batch_size = len(input_batch_list)
+    words = [sent[0] for sent in input_batch_list]
+    features = [np.asarray(sent[1]) for sent in input_batch_list]
+    feature_num = len(features[0][0])
+    chars = [sent[2] for sent in input_batch_list]
+    labels = [sent[3] for sent in input_batch_list]
+    teacher_preds = [sent[4] for sent in input_batch_list]
+    num_labels = len(teacher_preds[0][0])
+    
+    word_seq_lengths = torch.LongTensor(list(map(len, words)))
+    max_seq_len = word_seq_lengths.max().item()
+    word_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).long()
+    label_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).long()
+    teacher_preds_seq_tensor = torch.zeros((batch_size, max_seq_len, num_labels), requires_grad=if_train)
+    feature_seq_tensors = []
+    for idx in range(feature_num):
+        feature_seq_tensors.append(torch.zeros((batch_size, max_seq_len),requires_grad =  if_train).long())
+    mask = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).bool()
+    for idx, (seq, label, seqlen, ex_teacher_preds) in enumerate(zip(words, labels, word_seq_lengths, teacher_preds)):
+        seqlen = seqlen.item()
+        word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
+        label_seq_tensor[idx, :seqlen] = torch.LongTensor(label)
+        teacher_preds_seq_tensor[idx, :seqlen] = torch.Tensor(ex_teacher_preds)
+        mask[idx, :seqlen] = torch.Tensor([1]*seqlen)
+        for idy in range(feature_num):
+            feature_seq_tensors[idy][idx,:seqlen] = torch.LongTensor(features[idx][:,idy])
+    word_seq_lengths, word_perm_idx = word_seq_lengths.sort(0, descending=True)
+    word_seq_tensor = word_seq_tensor[word_perm_idx]
+    for idx in range(feature_num):
+        feature_seq_tensors[idx] = feature_seq_tensors[idx][word_perm_idx]
+
+    label_seq_tensor = label_seq_tensor[word_perm_idx]
+    teacher_preds_seq_tensor = teacher_preds_seq_tensor[word_perm_idx]
+    mask = mask[word_perm_idx]
+    ### deal with char
+    # pad_chars (batch_size, max_seq_len)
+    pad_chars = [chars[idx] + [[0]] * (max_seq_len-len(chars[idx])) for idx in range(len(chars))]
+    length_list = [list(map(len, pad_char)) for pad_char in pad_chars]
+    max_word_len = max(map(max, length_list))
+    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len), requires_grad =  if_train).long()
+    char_seq_lengths = torch.LongTensor(length_list)
+    for idx, (seq, seqlen) in enumerate(zip(pad_chars, char_seq_lengths)):
+        for idy, (word, wordlen) in enumerate(zip(seq, seqlen)):
+            # print len(word), wordlen
+            char_seq_tensor[idx, idy, :wordlen] = torch.LongTensor(word)
+
+    char_seq_tensor = char_seq_tensor[word_perm_idx].view(batch_size*max_seq_len,-1)
+    char_seq_lengths = char_seq_lengths[word_perm_idx].view(batch_size*max_seq_len,)
+    char_seq_lengths, char_perm_idx = char_seq_lengths.sort(0, descending=True)
+    char_seq_tensor = char_seq_tensor[char_perm_idx]
+    _, char_seq_recover = char_perm_idx.sort(0, descending=False)
+    _, word_seq_recover = word_perm_idx.sort(0, descending=False)
+    if gpu:
+        word_seq_tensor = word_seq_tensor.cuda()
+        for idx in range(feature_num):
+            feature_seq_tensors[idx] = feature_seq_tensors[idx].cuda()
+        word_seq_lengths = word_seq_lengths.cuda()
+        word_seq_recover = word_seq_recover.cuda()
+        label_seq_tensor = label_seq_tensor.cuda()
+        teacher_preds_seq_tensor = teacher_preds_seq_tensor.cuda()
+        char_seq_tensor = char_seq_tensor.cuda()
+        char_seq_recover = char_seq_recover.cuda()
+        mask = mask.cuda()
+    return word_seq_tensor,feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, teacher_preds_seq_tensor, mask
+
 
 def batchify_sequence_labeling_with_label(input_batch_list, gpu, if_train=True):
     """
@@ -407,9 +495,14 @@ def train(data):
             instance = data.train_Ids[start:end]
             if not instance:
                 continue
-            batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, True, data.sentence_classification)
+            if data.kd_param > 0:
+                batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, batch_teacher_preds, mask  = batchify_with_label_kd(instance, data.HP_gpu, True, data.sentence_classification)
+                loss, tag_seq = model.calculate_loss_kd(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, batch_teacher_preds, mask)
+            else:
+                batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, True, data.sentence_classification)
+                loss, tag_seq = model.calculate_loss(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, mask)
+
             instance_count += 1
-            loss, tag_seq = model.calculate_loss(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, mask)
             right, whole = predict_check(tag_seq, batch_label, mask, data.sentence_classification)
             right_token += right
             whole_token += whole

@@ -158,7 +158,56 @@ def read_instance(input_file, word_alphabet, char_alphabet, feature_alphabets, l
             label_Ids = []
     return instence_texts, instence_Ids
 
+def read_kd_instance(input_file, kd_label_file, label_alphabet, max_sent_length, sentence_classification):
+    # assumes sequence labeling task
+    assert not sentence_classification
+    
+    # read kd label ordering
+    num_labels = len(label_alphabet.instances)
+    in_lines = open(kd_label_file,'r', encoding="utf8").readlines()
+    kd_labels = []
+    for line in in_lines:
+        if line == "" or line =="\n":
+            break
+        kd_labels.append(line.strip())
+    assert len(kd_labels) == num_labels
+    
+    # get the ordering of the kd predictions corresponding to the order here 
+    kd_label_to_label_alphabet_ix = [label_alphabet.instance2index[label] for label in kd_labels]
+    
+    in_lines = open(input_file,'r', encoding="utf8").readlines()
+    
+    teacher_predictions = []
+    example_teacher_predictions = []
+    for line in in_lines:
+        if line == "" or line =="\n":
+            # append teacher predictions for sentence if not too long sentence length
+            if len(example_teacher_predictions) > 0 and ((max_sent_length < 0) or (len(example_teacher_predictions) < max_sent_length)):
+                teacher_predictions.append(example_teacher_predictions)
+            example_teacher_predictions = []
+        else:
+            teacher_word_prediction = [float(x) for x in line.split(" ")]
+            # make sure order is correct
+            # add prediction for padded label (which has index 0)
+            teacher_word_prediction_reordered = [float('-inf')]*(num_labels+1)
+            for index, value in enumerate(teacher_word_prediction):
+                teacher_word_prediction_reordered[kd_label_to_label_alphabet_ix[index]] = value
+            assert teacher_word_prediction_reordered[0] == float('-inf')
+            example_teacher_predictions.append(teacher_word_prediction_reordered)
+            
+    if len(example_teacher_predictions) > 0 and ((max_sent_length < 0) or (len(example_teacher_predictions) < max_sent_length)):
+        teacher_predictions.append(example_teacher_predictions)
+    return teacher_predictions
 
+def merge_kd_instance(instance_ids, kd_logits):
+    assert len(instance_ids) == len(kd_logits)
+    for sentence_ix in range(len(instance_ids)):
+        # number of words and number of logits for sentence should be equal
+        assert len(instance_ids[sentence_ix][0]) == len(kd_logits[sentence_ix])
+        instance_ids[sentence_ix].append(kd_logits[sentence_ix])
+        
+    return instance_ids
+        
 def build_pretrain_embedding(embedding_path, word_alphabet, embedd_dim=100, norm=True):
     embedd_dict = dict()
     if embedding_path != None:
