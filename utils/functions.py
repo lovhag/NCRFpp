@@ -200,7 +200,8 @@ def read_kd_instance(input_file, kd_label_file, label_alphabet, max_sent_length,
     return teacher_predictions
 
 def merge_kd_instance(instance_ids, kd_logits):
-    assert len(instance_ids) == len(kd_logits)
+    if not len(instance_ids) == len(kd_logits):
+        raise Exception(f"instance_ids length ({len(instance_ids)}) and kd_logits length ({len(kd_logits)}) should be equal.")
     for sentence_ix in range(len(instance_ids)):
         # number of words and number of logits for sentence should be equal
         assert len(instance_ids[sentence_ix][0]) == len(kd_logits[sentence_ix])
