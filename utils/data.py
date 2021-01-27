@@ -304,7 +304,7 @@ class Data:
             self.train_texts, self.train_Ids = read_instance(self.train_dir, self.word_alphabet, self.char_alphabet, self.feature_alphabets, self.label_alphabet, self.number_normalized, self.MAX_SENTENCE_LENGTH, self.sentence_classification, self.split_token)
             if self.kd_param and self.kd_param > 0:
                 train_kd_logits = read_kd_instance(self.train_kd_dir, self.kd_label_file, self.label_alphabet, self.MAX_SENTENCE_LENGTH, self.sentence_classification)
-                self.train_Ids = merge_kd_instance(self.train_Ids, train_kd_logits)
+                self.train_Ids = merge_kd_instance(self.train_Ids, self.train_texts, train_kd_logits)
         elif name == "dev":
             self.dev_texts, self.dev_Ids = read_instance(self.dev_dir, self.word_alphabet, self.char_alphabet, self.feature_alphabets, self.label_alphabet, self.number_normalized, self.MAX_SENTENCE_LENGTH, self.sentence_classification, self.split_token)
         elif name == "test":

@@ -201,13 +201,23 @@ def read_kd_instance(input_file, kd_label_file, label_alphabet, max_sent_length,
         teacher_predictions.append(example_teacher_predictions)
     return teacher_predictions
 
-def merge_kd_instance(instance_ids, kd_logits):
+def merge_kd_instance(instance_ids, instance_texts, kd_logits):
     if not len(instance_ids) == len(kd_logits):
         raise Exception(f"instance_ids length ({len(instance_ids)}) and kd_logits length ({len(kd_logits)}) should be equal.")
     for sentence_ix in range(len(instance_ids)):
         # number of words and number of logits for sentence should be equal
         if not len(instance_ids[sentence_ix][0]) == len(kd_logits[sentence_ix]):
-            raise Exception(f"Number of elements in instance_ids ({len(instance_ids[sentence_ix][0])}) and kd_logits ({len(kd_logits[sentence_ix])}) for sentence nbr {sentence_ix} should be equal.")
+            print(f"merge_kd_instance: number of elements in instance_ids ({len(instance_ids[sentence_ix][0])}) and kd_logits ({len(kd_logits[sentence_ix])}) for sentence not equal")
+            print(f"\t sentence: {instance_texts[sentence_ix][0]}")
+            print("\t truncating.")
+            
+            # truncate all data to the smallest length
+            min_len = min(len(instance_ids[sentence_ix][0]), len(kd_logits[sentence_ix]))
+            for sentence_feature_index in range(len(instance_ids[sentence_ix])):
+                instance_ids[sentence_ix][sentence_feature_index] = instance_ids[sentence_ix][sentence_feature_index][:min_len]
+                instance_texts[sentence_ix][sentence_feature_index] = instance_texts[sentence_ix][sentence_feature_index][:min_len]
+            kd_logits[sentence_ix] = kd_logits[sentence_ix][:min_len]    
+            
         instance_ids[sentence_ix].append(kd_logits[sentence_ix])
         
     return instance_ids
