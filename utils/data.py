@@ -112,6 +112,8 @@ class Data:
         self.kd_label_file = None
         self.kd_param = None
 
+        self.seed_num = 42
+
     def show_data_summary(self):
         
         print("++"*50)
@@ -556,6 +558,10 @@ class Data:
         the_item = 'kd_param'
         if the_item in config:
             self.kd_param = float(config[the_item])
+            
+        the_item ='seed_num'
+        if the_item in config:
+            self.seed_num = int(config[the_item])
 
 
 def config_file_to_dict(input_file):

@@ -24,13 +24,6 @@ try:
 except ImportError:
     import pickle
 
-
-seed_num = 42
-random.seed(seed_num)
-torch.manual_seed(seed_num)
-np.random.seed(seed_num)
-
-
 def data_initialization(data):
     data.initial_feature_alphabets()
     data.build_alphabet(data.train_dir)
@@ -632,12 +625,15 @@ if __name__ == '__main__':
             data.seg = True
         else:
             data.seg = False
-        print("Seed num:",seed_num)
     else:
         data.read_config(args.config)
     # data.show_data_summary()
     status = data.status.lower()
-    print("Seed num:",seed_num)
+    print("Seed num:",data.seed_num)
+    
+    random.seed(data.seed_num)
+    torch.manual_seed(data.seed_num)
+    np.random.seed(data.seed_num)
 
     if status == 'train':
         print("MODEL: train")
