@@ -19,6 +19,9 @@ from model.seqlabel import SeqLabel
 from model.sentclassifier import SentClassifier
 from utils.data import Data
 
+import os
+import thop
+
 try:
     import cPickle as pickle
 except ImportError:
@@ -560,6 +563,60 @@ def train(data):
         gc.collect()
 
 
+def print_info(data):
+    print("Printing info for model...")
+    data.show_data_summary()
+    save_data_name = data.model_dir +".dset"
+    data.save(save_data_name)
+    if data.sentence_classification:
+        model = SentClassifier(data)
+    else:
+        model = SeqLabel(data)
+        
+    def get_num_model_params(model):
+        return sum(p.numel() for p in model.parameters())
+        
+    def computeTime(model, inputs, device='cuda'):
+        if device == 'cuda':
+            model = model.cuda()
+            inputs = inputs.cuda()
+
+        model.eval()
+
+        i = 0
+        time_spent = []
+        while i < 100:
+            start_time = time.time()
+            with torch.no_grad():
+                _ = model(*inputs)
+                
+
+            if device == 'cuda':
+                torch.cuda.synchronize()  # wait for cuda to finish (cuda is asynchronous!)
+            if i != 0:
+                time_spent.append(time.time() - start_time)
+            i += 1
+        return np.mean(time_spent)
+    batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label([data.dev_Ids[0]], data.HP_gpu, True, data.sentence_classification)
+    inputs = (batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask)
+    #tag_seq = model(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask)
+    
+    num_model_params = get_num_model_params(model)
+    thop_num_model_macs, thop_num_model_params = thop.profile(model, inputs=inputs)
+    model_mean_100_inference_time = computeTime(model, inputs, device='cuda' if data.HP_gpu else 'cpu')
+    
+    output_model_info_file = os.path.join(data.model_dir, "model_info.txt")
+    
+    with open(output_model_info_file, 'w') as f:
+        f.write("Number of model parameters: \t %d" %(num_model_params))
+        f.write('\n')
+        f.write("Number of model parameters (thop): \t %d" %(thop_num_model_params))
+        f.write('\n')
+        f.write("Number of MACs necessary for one example forward pass: \t %d" %(thop_num_model_macs))
+        f.write('\n')
+        f.write("Time necessary for one example forward pass (average of 100 runs): \t %.6f s" %(model_mean_100_inference_time))
+        f.write('\n')
+
 def load_model_decode(data, name):
     print("Load Model from file: ", data.model_dir)
     if data.sentence_classification:
@@ -597,7 +654,7 @@ if __name__ == '__main__':
     parser.add_argument('--config',  help='Configuration File', default='None')
     parser.add_argument('--wordemb',  help='Embedding for words', default='None')
     parser.add_argument('--charemb',  help='Embedding for chars', default='None')
-    parser.add_argument('--status', choices=['train', 'decode'], help='update algorithm', default='train')
+    parser.add_argument('--status', choices=['train', 'decode', 'info'], help='update algorithm', default='train')
     parser.add_argument('--savemodel', default="data/model/saved_model.lstmcrf.")
     parser.add_argument('--savedset', help='Dir of saved data setting')
     parser.add_argument('--train', default="data/conll03/train.bmes") 
@@ -657,6 +714,12 @@ if __name__ == '__main__':
             data.write_nbest_decoded_results(decode_results, pred_scores, 'raw')
         else:
             data.write_decoded_results(decode_results, 'raw')
+    elif status == 'info':
+        print("MODEL: info")
+        data_initialization(data)
+        data.generate_instance('dev')
+        data.build_pretrain_emb()
+        print_info(data)
     else:
         print("Invalid argument! Please use valid arguments! (train/test/decode)")
 
